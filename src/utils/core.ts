@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { ClientEvents, Interaction } from 'discord.js';
 import type { Command, Event } from '@/types';
 
@@ -27,12 +28,12 @@ const collectModuleFiles = (baseDir: string): string[] => {
  * Dynamically loads all commands from the commands directory
  */
 export const getCommands = async (): Promise<Command<Interaction>[]> => {
-  const commandsPath = path.join(__dirname, '..', 'commands');
+  const commandsPath = path.join(import.meta.dirname, '..', 'commands');
   const files = collectModuleFiles(commandsPath);
 
   return Promise.all(
     files.map(async (file) => {
-      const mod = await import(file);
+      const mod = await import(pathToFileURL(file).href);
       return mod.command as Command<Interaction>;
     })
   );
@@ -42,12 +43,12 @@ export const getCommands = async (): Promise<Command<Interaction>[]> => {
  * Dynamically loads all events from the events directory
  */
 export const getEvents = async (): Promise<Event<keyof ClientEvents>[]> => {
-  const eventsPath = path.join(__dirname, '..', 'events');
+  const eventsPath = path.join(import.meta.dirname, '..', 'events');
   const files = collectModuleFiles(eventsPath);
 
   return Promise.all(
     files.map(async (file) => {
-      const mod = await import(file);
+      const mod = await import(pathToFileURL(file).href);
       return mod.event as Event<keyof ClientEvents>;
     })
   );
