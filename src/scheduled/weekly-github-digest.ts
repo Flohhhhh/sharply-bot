@@ -18,6 +18,67 @@ const log = logger.child({ name: "scheduled/weekly-github-digest" });
 const MAX_WHATS_NEW = 20;
 const MAX_FIXES = 20;
 
+type ChangelogEntry = { text: string; url: string };
+
+/** Discord `content` max; code fence is ```\n … \n``` → 8 chars overhead for non-empty inner. */
+const DISCORD_CONTENT_MAX = 2000;
+const MARKDOWN_FENCE_OVERHEAD = 8;
+const MAX_UNFENCED_BODY = DISCORD_CONTENT_MAX - MARKDOWN_FENCE_OVERHEAD;
+
+function wrapMarkdownCodeBlock(inner: string): string {
+	return `\`\`\`\n${inner}\n\`\`\``;
+}
+
+/**
+ * Trim unfenced markdown until it fits in one Discord message after wrapping in ``` fences.
+ */
+function finalizeDigestMarkdownForDiscord(unfencedBody: string): string {
+	let inner = unfencedBody.trim();
+	const wrap = () => wrapMarkdownCodeBlock(inner);
+
+	while (wrap().length > DISCORD_CONTENT_MAX && inner.length > 0) {
+		const cut = inner.lastIndexOf("\n");
+		if (cut > inner.length * 0.25) {
+			inner = inner.slice(0, cut).trimEnd();
+		} else {
+			inner = inner.slice(0, Math.max(0, inner.length - 120)).trimEnd();
+		}
+	}
+
+	const originalLen = unfencedBody.trim().length;
+	if (inner.length < originalLen) {
+		inner = `${inner}\n\n_…truncated._`;
+		while (wrap().length > DISCORD_CONTENT_MAX && inner.length > 40) {
+			inner = inner.slice(0, -100).trimEnd();
+			if (!inner.endsWith("truncated._")) {
+				inner = `${inner}\n\n_…truncated._`;
+			}
+		}
+	}
+
+	return wrap();
+}
+
+function buildHeuristicSummary(
+	whatsNew: ChangelogEntry[],
+	fixes: ChangelogEntry[],
+	windowDays: number,
+	repoFull: string,
+): string {
+	const w = whatsNew.length;
+	const f = fixes.length;
+	if (w + f === 0) {
+		return "";
+	}
+	if (f === 0) {
+		return `Here's what changed in **${repoFull}** over the past **${windowDays}** days: **${w}** improvement${w === 1 ? "" : "s"} shipped, with detail below.`;
+	}
+	if (w === 0) {
+		return `Here's what changed in **${repoFull}** over the past **${windowDays}** days: **${f}** fix${f === 1 ? "" : "es"}, with detail below.`;
+	}
+	return `Here's what changed in **${repoFull}** over the past **${windowDays}** days: **${w}** improvement${w === 1 ? "" : "s"} and **${f}** fix${f === 1 ? "" : "es"}, with detail below.`;
+}
+
 function mergedInWindow(p: GithubPullItem, sinceMs: number): boolean {
 	if (!p.merged_at) {
 		return false;
@@ -101,8 +162,6 @@ function toChangelogLine(raw: string): string {
 	return t.charAt(0).toLowerCase() + t.slice(1);
 }
 
-type ChangelogEntry = { text: string; url: string };
-
 /** Discord suppresses link embeds for URLs wrapped in angle brackets. */
 function angleWrapUrl(url: string): string {
 	const trimmed = url.trim();
@@ -148,6 +207,7 @@ function fitChangelogToLimit(
 	whatsNewAll: ChangelogEntry[],
 	fixesAll: ChangelogEntry[],
 	repoUrl: string,
+	maxInnerLength: number,
 ): string {
 	let whatsNew = whatsNewAll.slice(0, MAX_WHATS_NEW);
 	let fixes = fixesAll.slice(0, MAX_FIXES);
@@ -159,7 +219,7 @@ function fitChangelogToLimit(
 		if (omitted > 0) {
 			inner += `\n\n_…and ${omitted} more — ${angleWrapUrl(repoUrl)}_`;
 		}
-		if (inner.length <= 2000) {
+		if (inner.length <= maxInnerLength) {
 			return inner;
 		}
 
@@ -285,12 +345,12 @@ export async function runWeeklyGithubDigest(
 		id += 1;
 	}
 
-	let content: string;
+	let unfencedBody: string;
 	let changelogSource: "llm" | "heuristic" | "empty" = "heuristic";
 
 	if (shipped.length === 0) {
 		changelogSource = "empty";
-		content = "## What's New\n_no items this period._";
+		unfencedBody = `_No merged changes in the past **${windowDays}** days for **${repoFull}**._\n\n## What's New\n_no items this period._`;
 	} else if (env.WEEKLY_DIGEST_LLM_API_KEY) {
 		const llmMd = await generateChangelogWithLlm({
 			apiKey: env.WEEKLY_DIGEST_LLM_API_KEY,
@@ -302,23 +362,57 @@ export async function runWeeklyGithubDigest(
 		});
 		if (llmMd && llmMd.trim().length > 0) {
 			changelogSource = "llm";
-			content =
-				llmMd.length > 2000
-					? `${llmMd.slice(0, 1990)}\n\n_…truncated._`
-					: llmMd;
+			unfencedBody = llmMd.trim();
 			log.info("Weekly digest: using LLM changelog");
 		} else {
-			content = fitChangelogToLimit(whatsNew, fixes, repoUrl);
+			const summary = buildHeuristicSummary(
+				whatsNew,
+				fixes,
+				windowDays,
+				repoFull,
+			);
+			const sep = "\n\n";
+			const maxSections = Math.max(
+				200,
+				MAX_UNFENCED_BODY - summary.length - sep.length,
+			);
+			const sections = fitChangelogToLimit(
+				whatsNew,
+				fixes,
+				repoUrl,
+				maxSections,
+			);
+			unfencedBody = `${summary}${sep}${sections}`;
 			log.warn("Weekly digest: LLM failed or empty; using heuristic changelog");
 		}
 	} else {
-		content = fitChangelogToLimit(whatsNew, fixes, repoUrl);
+		const summary = buildHeuristicSummary(
+			whatsNew,
+			fixes,
+			windowDays,
+			repoFull,
+		);
+		const sep = "\n\n";
+		const maxSections = Math.max(
+			200,
+			MAX_UNFENCED_BODY - summary.length - sep.length,
+		);
+		const sections = fitChangelogToLimit(
+			whatsNew,
+			fixes,
+			repoUrl,
+			maxSections,
+		);
+		unfencedBody = `${summary}${sep}${sections}`;
 	}
+
+	const content = finalizeDigestMarkdownForDiscord(unfencedBody);
 
 	log.debug(
 		{
 			reason: context.reason,
 			changelogSource,
+			unfencedChars: unfencedBody.length,
 			contentChars: content.length,
 			whatsNew: whatsNew.length,
 			fixes: fixes.length,
