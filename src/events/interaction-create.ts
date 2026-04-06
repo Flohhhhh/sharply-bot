@@ -34,7 +34,20 @@ export const event: Event<Events.InteractionCreate> = {
 
     const command = interaction.client.commands.get(interaction.commandName);
     if (!command) {
-      log.warn(`Command not found: ${interaction.commandName}`);
+      log.error(
+        {
+          command: commandLabel,
+          commandName: interaction.commandName,
+          interactionId: interaction.id,
+          availableCommands: [...interaction.client.commands.keys()]
+        },
+        'Command not found in running bot'
+      );
+
+      await interaction.reply({
+        content: 'This command is registered in Discord but is not loaded by the running bot.',
+        flags: MessageFlags.Ephemeral
+      });
       return;
     }
 
@@ -49,11 +62,14 @@ export const event: Event<Events.InteractionCreate> = {
         'Command succeeded'
       );
     } catch (error) {
-      log.debug(
+      log.error(
         {
           err: error,
           command: commandLabel,
+          interactionId: interaction.id,
           userId: interaction.user.id,
+          guildId: interaction.guildId,
+          channelId: interaction.channelId,
           durationMs: Date.now() - startedAt
         },
         'Command failed'
@@ -61,16 +77,28 @@ export const event: Event<Events.InteractionCreate> = {
 
       const errorMessage = 'An error occurred while executing this command.';
 
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({
-          content: errorMessage,
-          flags: MessageFlags.Ephemeral
-        });
-      } else {
-        await interaction.reply({
-          content: errorMessage,
-          flags: MessageFlags.Ephemeral
-        });
+      try {
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp({
+            content: errorMessage,
+            flags: MessageFlags.Ephemeral
+          });
+        } else {
+          await interaction.reply({
+            content: errorMessage,
+            flags: MessageFlags.Ephemeral
+          });
+        }
+      } catch (replyError) {
+        log.error(
+          {
+            err: replyError,
+            command: commandLabel,
+            interactionId: interaction.id,
+            userId: interaction.user.id
+          },
+          'Failed to send command error response'
+        );
       }
     }
   }
