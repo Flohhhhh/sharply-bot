@@ -2,6 +2,16 @@ import { SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.j
 import type { Command } from '@/types';
 import { fetchTrending } from '@/utils/sharply-api';
 
+function suppressDiscordEmbed(url: string): string {
+  const trimmed = url.trim();
+
+  if (trimmed.startsWith('<') && trimmed.endsWith('>')) {
+    return trimmed;
+  }
+
+  return `<${trimmed}>`;
+}
+
 export const command: Command<ChatInputCommandInteraction> = {
   data: new SlashCommandBuilder()
     .setName('trending')
@@ -12,10 +22,7 @@ export const command: Command<ChatInputCommandInteraction> = {
       option
         .setName('window')
         .setDescription('Time window (7d or 30d)')
-        .addChoices(
-          { name: '7d', value: '7d' },
-          { name: '30d', value: '30d' }
-        )
+        .addChoices({ name: '7d', value: '7d' }, { name: '30d', value: '30d' })
     ),
   docs: {
     category: 'Lists',
@@ -37,7 +44,7 @@ export const command: Command<ChatInputCommandInteraction> = {
         item.brandName && !item.name.toLowerCase().startsWith(item.brandName.toLowerCase())
           ? `${item.brandName} ${item.name}`
           : item.name;
-      return `${index + 1}. ${displayName} — ${item.url}`;
+      return `${index + 1}. ${displayName} — ${suppressDiscordEmbed(item.url)}`;
     });
 
     await interaction.editReply(`Top trending (${result.window}):\n${lines.join('\n')}`);
