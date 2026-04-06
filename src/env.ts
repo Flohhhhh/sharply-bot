@@ -24,6 +24,18 @@ export const env = createEnv({
       (val) => emptyToUndefined(val) ?? 7,
       z.coerce.number().int().min(1).max(90).default(7)
     ),
-    GITHUB_TOKEN: z.preprocess(emptyToUndefined, z.string().min(1).optional())
+    GITHUB_TOKEN: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+    WEEKLY_DIGEST_LLM_API_KEY: z.preprocess(
+      emptyToUndefined,
+      z.string().min(1).optional()
+    ),
+    WEEKLY_DIGEST_LLM_BASE_URL: z.preprocess(
+      (val) => emptyToUndefined(val) ?? 'https://api.openai.com/v1',
+      z.string().url()
+    ),
+    WEEKLY_DIGEST_LLM_MODEL: z.preprocess(
+      (val) => emptyToUndefined(val) ?? 'gpt-4o-mini',
+      z.string().min(1)
+    )
   }
 });

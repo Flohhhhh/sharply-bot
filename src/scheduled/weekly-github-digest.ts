@@ -1,5 +1,9 @@
 import { Cron } from "croner";
 import { env } from "@/env";
+import {
+	type ChangelogLlmPull,
+	generateChangelogWithLlm,
+} from "@/utils/changelog-llm";
 import { postDiscordIncomingWebhook } from "@/utils/discord-incoming-webhook";
 import {
 	fetchRecentPulls,
@@ -108,16 +112,11 @@ function angleWrapUrl(url: string): string {
 	return `<${trimmed}>`;
 }
 
-function wrapChangelogCodeBlock(inner: string): string {
-	return `\`\`\`\n${inner}\n\`\`\``;
-}
-
 function buildChangelogInner(
 	whatsNew: ChangelogEntry[],
 	fixes: ChangelogEntry[],
 ): string {
 	const lines: string[] = [];
-	const refs: string[] = [];
 	let n = 1;
 
 	const pushSection = (heading: string, entries: ChangelogEntry[]) => {
@@ -129,8 +128,8 @@ function buildChangelogInner(
 		}
 		lines.push(heading);
 		for (const e of entries) {
-			lines.push(`- ${e.text} [${n}]`);
-			refs.push(`[${n}] ${angleWrapUrl(e.url)}`);
+			const href = angleWrapUrl(e.url);
+			lines.push(`- ${e.text} [[${n}]](${href})`);
 			n += 1;
 		}
 	};
@@ -142,7 +141,6 @@ function buildChangelogInner(
 		return "## What's New\n_no items this period._";
 	}
 
-	lines.push("", ...refs);
 	return lines.join("\n");
 }
 
@@ -161,9 +159,8 @@ function fitChangelogToLimit(
 		if (omitted > 0) {
 			inner += `\n\n_…and ${omitted} more — ${angleWrapUrl(repoUrl)}_`;
 		}
-		const wrapped = wrapChangelogCodeBlock(inner);
-		if (wrapped.length <= 2000) {
-			return wrapped;
+		if (inner.length <= 2000) {
+			return inner;
 		}
 
 		if (fixes.length > 0) {
@@ -176,9 +173,7 @@ function fitChangelogToLimit(
 			omitted += 1;
 			continue;
 		}
-		return wrapChangelogCodeBlock(
-			"## What's New\n_note: changelog too long for one Discord message; see GitHub._",
-		);
+		return "## What's New\n_note: changelog too long for one Discord message; see GitHub._";
 	}
 }
 
@@ -265,10 +260,19 @@ export async function runWeeklyGithubDigest(
 		.filter((p) => !isMergeNoiseTitle(p.title))
 		.sort(sortByMergedAtDesc);
 
+	const pullsForLlm: ChangelogLlmPull[] = [];
 	const whatsNew: ChangelogEntry[] = [];
 	const fixes: ChangelogEntry[] = [];
 
+	let id = 1;
 	for (const p of shipped) {
+		pullsForLlm.push({
+			id,
+			githubNumber: p.number,
+			title: p.title,
+			url: p.html_url,
+			suggestedSection: isFixCategoryTitle(p.title) ? "fixes" : "whats_new",
+		});
 		const entry: ChangelogEntry = {
 			text: toChangelogLine(p.title),
 			url: p.html_url,
@@ -278,13 +282,43 @@ export async function runWeeklyGithubDigest(
 		} else {
 			whatsNew.push(entry);
 		}
+		id += 1;
 	}
 
-	const content = fitChangelogToLimit(whatsNew, fixes, repoUrl);
+	let content: string;
+	let changelogSource: "llm" | "heuristic" | "empty" = "heuristic";
+
+	if (shipped.length === 0) {
+		changelogSource = "empty";
+		content = "## What's New\n_no items this period._";
+	} else if (env.WEEKLY_DIGEST_LLM_API_KEY) {
+		const llmMd = await generateChangelogWithLlm({
+			apiKey: env.WEEKLY_DIGEST_LLM_API_KEY,
+			baseUrl: env.WEEKLY_DIGEST_LLM_BASE_URL,
+			model: env.WEEKLY_DIGEST_LLM_MODEL,
+			repoFull,
+			windowDays,
+			pulls: pullsForLlm,
+		});
+		if (llmMd && llmMd.trim().length > 0) {
+			changelogSource = "llm";
+			content =
+				llmMd.length > 2000
+					? `${llmMd.slice(0, 1990)}\n\n_…truncated._`
+					: llmMd;
+			log.info("Weekly digest: using LLM changelog");
+		} else {
+			content = fitChangelogToLimit(whatsNew, fixes, repoUrl);
+			log.warn("Weekly digest: LLM failed or empty; using heuristic changelog");
+		}
+	} else {
+		content = fitChangelogToLimit(whatsNew, fixes, repoUrl);
+	}
 
 	log.debug(
 		{
 			reason: context.reason,
+			changelogSource,
 			contentChars: content.length,
 			whatsNew: whatsNew.length,
 			fixes: fixes.length,
@@ -303,6 +337,7 @@ export async function runWeeklyGithubDigest(
 	log.info(
 		{
 			reason: context.reason,
+			changelogSource,
 			parts,
 			pullsInWindow: pulls.length,
 			shipped: shipped.length,
