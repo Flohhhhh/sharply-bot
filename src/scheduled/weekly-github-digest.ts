@@ -11,9 +11,8 @@ import { logger } from "@/utils/logger";
 
 const log = logger.child({ name: "scheduled/weekly-github-digest" });
 
-const MAX_SHIPPED = 20;
-const MAX_IN_PROGRESS = 6;
-const MAX_CLOSED = 5;
+const MAX_WHATS_NEW = 20;
+const MAX_FIXES = 20;
 
 function mergedInWindow(p: GithubPullItem, sinceMs: number): boolean {
 	if (!p.merged_at) {
@@ -23,86 +22,170 @@ function mergedInWindow(p: GithubPullItem, sinceMs: number): boolean {
 	return !Number.isNaN(t) && t >= sinceMs;
 }
 
-/** Strip characters that break Discord markdown outside of link labels. */
-function neutralizeDiscordMarkdown(text: string): string {
+function neutralizeForCodeBlock(text: string): string {
 	return text
 		.replace(/\s+/g, " ")
 		.trim()
 		.replace(/[*_`~|]/g, "")
+		.replace(/```/g, "'''")
 		.slice(0, 280);
 }
 
-/** `[]` inside `[label](url)` breaks Discord links — use harmless substitutes. */
-function escapeDiscordLinkLabel(text: string): string {
-	return text.replace(/\[/g, "(").replace(/\]/g, ")");
+function isMergeNoiseTitle(raw: string): boolean {
+	const t = neutralizeForCodeBlock(raw).toLowerCase();
+	return (
+		/^merge pull request #\d+/i.test(t) ||
+		/^merge branch\b/i.test(t) ||
+		/^merge remote\b/i.test(t)
+	);
 }
 
-const SHIPPED_PREFIX_REWRITES: [RegExp, string][] = [
-	[/^adds?\s+/i, "Added "],
-	[/^fix(es|ed)?\s+/i, "Fixed "],
-	[/^remove[ds]?\s+/i, "Removed "],
-	[/^update[ds]?\s+/i, "Updated "],
-	[/^improve[ds]?\s+/i, "Improved "],
-	[/^prevent[ds]?\s+/i, "Prevented "],
-	[/^implement(s|ed)?\s+/i, "Shipped "],
-	[/^refactor(s|ed)?\s+/i, "Reworked "],
-	[/^display\s+/i, "The app now shows "],
-	[/^show\s+/i, "You can now see "],
-	[/^bump\s+/i, "Updated dependencies for "],
-	[/^chore\s*[:(]\s*/i, "Maintenance: "],
-	[/^chore\s+/i, "Maintenance: "],
+function isFixCategoryTitle(raw: string): boolean {
+	const t = neutralizeForCodeBlock(raw).toLowerCase();
+	if (/^fix(es|ed)?\b/.test(t)) {
+		return true;
+	}
+	if (/^hotfix\b/.test(t)) {
+		return true;
+	}
+	if (/\bbug\b/.test(t)) {
+		return true;
+	}
+	if (/^revert\b/.test(t)) {
+		return true;
+	}
+	if (/\bregression\b/.test(t)) {
+		return true;
+	}
+	return false;
+}
+
+const PREFIX_REWRITES: [RegExp, string][] = [
+	[/^adds?\s+/i, "added "],
+	[/^fix(es|ed)?\s+/i, "fixed "],
+	[/^remove[ds]?\s+/i, "removed "],
+	[/^update[ds]?\s+/i, "updated "],
+	[/^improve[ds]?\s+/i, "improved "],
+	[/^prevent[ds]?\s+/i, "prevented "],
+	[/^implement(s|ed)?\s+/i, "delivered "],
+	[/^refactor(s|ed)?\s+/i, "reworked "],
+	[/^display\s+/i, "the UI now shows "],
+	[/^show\s+/i, "there is now "],
+	[/^bump\s+/i, "updated dependencies: "],
+	[/^chore\s*[:(]\s*/i, "maintenance: "],
+	[/^chore\s+/i, "maintenance: "],
 ];
 
-/**
- * Turn a merged PR title into one user-facing sentence (changelog tone).
- * Real polish still comes from good PR titles; this only nudges common patterns.
- */
-function toShippedReleaseSentence(raw: string): string {
-	let t = neutralizeDiscordMarkdown(raw);
+/** One casual changelog line (lowercase start, no PR/merge wording). */
+function toChangelogLine(raw: string): string {
+	let t = neutralizeForCodeBlock(raw);
 	if (!t) {
-		return "An update was merged.";
+		return "minor update.";
 	}
 
-	if (/^merge pull request #\d+/i.test(t)) {
-		return "Integrated a merged pull request.";
-	}
-
-	for (const [pattern, replacement] of SHIPPED_PREFIX_REWRITES) {
+	for (const [pattern, replacement] of PREFIX_REWRITES) {
 		if (pattern.test(t)) {
 			t = t.replace(pattern, replacement);
 			break;
 		}
 	}
 
-	t = t.charAt(0).toUpperCase() + t.slice(1);
+	t = t.trim();
 	if (!/[.!?]$/.test(t)) {
 		t += ".";
 	}
-	return t;
+	return t.charAt(0).toLowerCase() + t.slice(1);
 }
 
-/** In-flight / closed lines: readable, but we do not guess past tense. */
-function toSimpleReleaseLine(raw: string): string {
-	const t = neutralizeDiscordMarkdown(raw);
-	if (!t) {
-		return "Update.";
+type ChangelogEntry = { text: string; url: string };
+
+/** Discord suppresses link embeds for URLs wrapped in angle brackets. */
+function angleWrapUrl(url: string): string {
+	const trimmed = url.trim();
+	if (trimmed.startsWith("<") && trimmed.endsWith(">")) {
+		return trimmed;
 	}
-	const s = t.charAt(0).toUpperCase() + t.slice(1);
-	return /[.!?]$/.test(s) ? s : `${s}.`;
+	return `<${trimmed}>`;
 }
 
-function proseLinkBullet(sentence: string, url: string): string {
-	return `- [${escapeDiscordLinkLabel(sentence)}](${url})`;
+function wrapChangelogCodeBlock(inner: string): string {
+	return `\`\`\`\n${inner}\n\`\`\``;
+}
+
+function buildChangelogInner(
+	whatsNew: ChangelogEntry[],
+	fixes: ChangelogEntry[],
+): string {
+	const lines: string[] = [];
+	const refs: string[] = [];
+	let n = 1;
+
+	const pushSection = (heading: string, entries: ChangelogEntry[]) => {
+		if (entries.length === 0) {
+			return;
+		}
+		if (lines.length > 0) {
+			lines.push("");
+		}
+		lines.push(heading);
+		for (const e of entries) {
+			lines.push(`- ${e.text} [${n}]`);
+			refs.push(`[${n}] ${angleWrapUrl(e.url)}`);
+			n += 1;
+		}
+	};
+
+	pushSection("## What's New", whatsNew);
+	pushSection("## Fixes", fixes);
+
+	if (lines.length === 0) {
+		return "## What's New\n_no items this period._";
+	}
+
+	lines.push("", ...refs);
+	return lines.join("\n");
+}
+
+function fitChangelogToLimit(
+	whatsNewAll: ChangelogEntry[],
+	fixesAll: ChangelogEntry[],
+	repoUrl: string,
+): string {
+	let whatsNew = whatsNewAll.slice(0, MAX_WHATS_NEW);
+	let fixes = fixesAll.slice(0, MAX_FIXES);
+	let omitted =
+		whatsNewAll.length - whatsNew.length + (fixesAll.length - fixes.length);
+
+	for (;;) {
+		let inner = buildChangelogInner(whatsNew, fixes);
+		if (omitted > 0) {
+			inner += `\n\n_…and ${omitted} more — ${angleWrapUrl(repoUrl)}_`;
+		}
+		const wrapped = wrapChangelogCodeBlock(inner);
+		if (wrapped.length <= 2000) {
+			return wrapped;
+		}
+
+		if (fixes.length > 0) {
+			fixes = fixes.slice(0, -1);
+			omitted += 1;
+			continue;
+		}
+		if (whatsNew.length > 0) {
+			whatsNew = whatsNew.slice(0, -1);
+			omitted += 1;
+			continue;
+		}
+		return wrapChangelogCodeBlock(
+			"## What's New\n_note: changelog too long for one Discord message; see GitHub._",
+		);
+	}
 }
 
 function sortByMergedAtDesc(a: GithubPullItem, b: GithubPullItem): number {
 	const ta = a.merged_at ? Date.parse(a.merged_at) : 0;
 	const tb = b.merged_at ? Date.parse(b.merged_at) : 0;
 	return tb - ta;
-}
-
-function sortByUpdatedDesc(a: GithubPullItem, b: GithubPullItem): number {
-	return Date.parse(b.updated_at) - Date.parse(a.updated_at);
 }
 
 function registerCronWithCroner(expression: string): void {
@@ -142,6 +225,7 @@ export async function runWeeklyGithubDigest(
 	const sinceMs = Date.now() - windowDays * 24 * 60 * 60 * 1000;
 	const sinceIso = new Date(sinceMs).toISOString();
 	const token = env.GITHUB_TOKEN;
+	const repoUrl = `https://github.com/${owner}/${repo}`;
 
 	log.info(
 		{
@@ -178,77 +262,33 @@ export async function runWeeklyGithubDigest(
 
 	const shipped = pulls
 		.filter((p) => mergedInWindow(p, sinceMs))
+		.filter((p) => !isMergeNoiseTitle(p.title))
 		.sort(sortByMergedAtDesc);
-	const inProgress = pulls
-		.filter((p) => p.state === "open")
-		.sort(sortByUpdatedDesc);
-	const closedNoMerge = pulls
-		.filter((p) => p.state === "closed" && !p.merged_at)
-		.sort(sortByUpdatedDesc);
 
-	const shippedCount = shipped.length;
-	const inProgressCount = inProgress.length;
-	const closedCount = closedNoMerge.length;
+	const whatsNew: ChangelogEntry[] = [];
+	const fixes: ChangelogEntry[] = [];
 
-	const lines: string[] = [`**What's new** — ${repoFull}`, ""];
-
-	if (shippedCount === 0 && inProgressCount === 0 && closedCount === 0) {
-		lines.push(
-			`_No pull request activity in the past **${windowDays}** days._`,
-		);
-	} else {
-		if (shippedCount > 0) {
-			const slice = shipped.slice(0, MAX_SHIPPED);
-			for (const p of slice) {
-				lines.push(
-					proseLinkBullet(toShippedReleaseSentence(p.title), p.html_url),
-				);
-			}
-			if (shippedCount > MAX_SHIPPED) {
-				lines.push(
-					"",
-					`_…and ${shippedCount - MAX_SHIPPED} more shipped updates — see GitHub for the full list._`,
-				);
-			}
-		} else if (inProgressCount > 0 || closedCount > 0) {
-			lines.push(
-				`_Nothing merged to the main branch in the past **${windowDays}** days._`,
-				"",
-			);
-		}
-
-		if (inProgressCount > 0) {
-			lines.push("", "_In progress_", "");
-			const slice = inProgress.slice(0, MAX_IN_PROGRESS);
-			for (const p of slice) {
-				lines.push(proseLinkBullet(toSimpleReleaseLine(p.title), p.html_url));
-			}
-			if (inProgressCount > MAX_IN_PROGRESS) {
-				lines.push(
-					"",
-					`_…and ${inProgressCount - MAX_IN_PROGRESS} more open PR(s)._`,
-				);
-			}
-		}
-
-		if (closedCount > 0) {
-			lines.push("", "_Closed without merging_", "");
-			const slice = closedNoMerge.slice(0, MAX_CLOSED);
-			for (const p of slice) {
-				lines.push(proseLinkBullet(toSimpleReleaseLine(p.title), p.html_url));
-			}
-			if (closedCount > MAX_CLOSED) {
-				lines.push("", `_…and ${closedCount - MAX_CLOSED} more._`);
-			}
+	for (const p of shipped) {
+		const entry: ChangelogEntry = {
+			text: toChangelogLine(p.title),
+			url: p.html_url,
+		};
+		if (isFixCategoryTitle(p.title)) {
+			fixes.push(entry);
+		} else {
+			whatsNew.push(entry);
 		}
 	}
 
-	const content = lines.join("\n");
+	const content = fitChangelogToLimit(whatsNew, fixes, repoUrl);
+
 	log.debug(
 		{
 			reason: context.reason,
 			contentChars: content.length,
-			lineCount: lines.length,
+			whatsNew: whatsNew.length,
+			fixes: fixes.length,
+			shipped: shipped.length,
 		},
 		"Weekly digest: message built",
 	);
@@ -258,15 +298,16 @@ export async function runWeeklyGithubDigest(
 		webhookUrl,
 		content,
 		username: "Repo digest",
+		singleMessageOnly: true,
 	});
 	log.info(
 		{
 			reason: context.reason,
 			parts,
 			pullsInWindow: pulls.length,
-			shipped: shippedCount,
-			inProgress: inProgressCount,
-			closedNoMerge: closedCount,
+			shipped: shipped.length,
+			whatsNew: whatsNew.length,
+			fixes: fixes.length,
 			contentChars: content.length,
 			postMs: Math.round(performance.now() - postStarted),
 			totalMs: Math.round(performance.now() - runStarted),
