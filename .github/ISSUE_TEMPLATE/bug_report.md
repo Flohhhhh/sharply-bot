@@ -1,9 +1,9 @@
 ---
 name: Bug Report
 about: Report a bug
-title: "[Bug] "
+title: '[Bug] '
 labels: bug
-assignees: ""
+assignees: ''
 ---
 
 ## Summary
@@ -26,6 +26,6 @@ assignees: ""
 
 ## Environment
 
-- Bun:
 - Node.js:
+- npm:
 - OS:

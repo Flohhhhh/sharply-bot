@@ -1,9 +1,4 @@
-import type {
-  ClientEvents,
-  Collection,
-  Interaction,
-  SlashCommandBuilder
-} from 'discord.js';
+import type { ClientEvents, Collection, Interaction, SlashCommandBuilder } from 'discord.js';
 
 declare module 'discord.js' {
   export interface Client {

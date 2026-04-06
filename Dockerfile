@@ -1,28 +1,28 @@
 # Build stage
-FROM oven/bun:1.3.5 AS builder
+FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 
-COPY package.json bun.lock* ./
-RUN bun install --frozen-lockfile
+COPY package.json package-lock.json ./
+RUN npm ci
 
 COPY . .
 
 # Production stage
-FROM oven/bun:1.3.5-slim AS runner
+FROM node:22-bookworm-slim AS runner
 
 WORKDIR /app
 
-# Copy node_modules and source files
-COPY --from=builder /app/node_modules ./node_modules
+ENV NODE_ENV=production
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
 COPY --from=builder /app/src ./src
-COPY --from=builder /app/package.json ./
 COPY --from=builder /app/tsconfig.json ./
 
-# Set as production environment
-ENV NODE_ENV=production 
+RUN groupadd --system --gid 1001 bot && useradd --system --uid 1001 --gid bot bot
 
-# Run as non-root user
-USER bun
+USER bot
 
-CMD ["bun", "run", "start"]
+CMD ["npm", "run", "start"]

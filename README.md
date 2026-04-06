@@ -1,19 +1,20 @@
-# Bun + TypeScript Discord Bot Template
+# Node.js + TypeScript Discord Bot Template
 
 ![intro](docs/images/intro.png)
 
-[![Bun](https://img.shields.io/badge/runtime-Bun-f9f1e1?logo=bun)](https://bun.sh/)
+[![Node.js](https://img.shields.io/badge/node.js-20+-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Biome](https://img.shields.io/badge/code%20style-Biome-60a5fa)](https://biomejs.dev/)
+[![ESLint](https://img.shields.io/badge/ESLint-4B32C3?logo=eslint&logoColor=white)](https://eslint.org/)
+[![Prettier](https://img.shields.io/badge/Prettier-F7B93E?logo=prettier&logoColor=black)](https://prettier.io/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-A simple, type-safe Discord Bot template built with Bun + Biome + TypeScript.
+A simple, type-safe Discord Bot template built with Node.js + ESLint + Prettier + TypeScript.
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/discord-bot-template?referralCode=DIAbPh&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
 ## Features
 
-- Fast runtime with Bun
+- Runs on Node.js 20+ with [tsx](https://github.com/privatenumber/tsx) for TypeScript execution
 - Full type safety with Zod environment variable validation
 - Dynamic command/event loading
 - Docker/Railway deployment ready
@@ -23,7 +24,7 @@ A simple, type-safe Discord Bot template built with Bun + Biome + TypeScript.
 ### Installation
 
 ```bash
-bun install
+npm install
 ```
 
 ### Configuration
@@ -43,14 +44,14 @@ DISCORD_GUILD_ID=your_guild_id_here  # optional
 ### Deploy Commands
 
 ```bash
-bun run deploy-commands        # Guild deploy (development)
-bun run deploy-commands --global  # Global deploy (production, take more time to propagate)
+npm run deploy-commands              # Guild deploy (development)
+npm run deploy-commands -- --global  # Global deploy (production, take more time to propagate)
 ```
 
 ### Run
 
 ```bash
-bun run start
+npm run start
 ```
 
 ## Project Structure
@@ -82,9 +83,7 @@ import { type ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.j
 import type { Command } from '@/types';
 
 export const command: Command<ChatInputCommandInteraction> = {
-  data: new SlashCommandBuilder()
-    .setName('hello')
-    .setDescription('Says hello!'),
+  data: new SlashCommandBuilder().setName('hello').setDescription('Says hello!'),
   execute: async (interaction) => {
     await interaction.reply('Hello, World!');
   }
@@ -135,14 +134,15 @@ docker run -d --env-file .env discord-bot
 
 ## Scripts
 
-| Command | Description |
-| ------- | ----------- |
-| `bun run start` | Start the bot |
-| `bun run deploy-commands` | Deploy slash commands |
-| `bun run lint` | Run Biome linter |
-| `bun run fmt` | Format code with Biome |
-| `bun run check` | Run lint + format |
-| `bun run typecheck` | TypeScript type check |
+| Command                   | Description                         |
+| ------------------------- | ----------------------------------- |
+| `npm run start`           | Start the bot                       |
+| `npm run deploy-commands` | Deploy slash commands               |
+| `npm run lint`            | Run ESLint                          |
+| `npm run lint:fix`        | Run ESLint with auto-fix            |
+| `npm run fmt`             | Format with Prettier                |
+| `npm run check`           | ESLint + Prettier check (no writes) |
+| `npm run typecheck`       | TypeScript type check               |
 
 ## Contributing
 
@@ -159,8 +159,8 @@ Please use [GitHub Issues](https://github.com/caru-ini/discord-bot-template/issu
 3. Make your changes
 4. Run checks:
    ```bash
-   bun run check      # lint + format
-   bun run typecheck  # type check
+   npm run check      # lint + format
+   npm run typecheck  # type check
    ```
 5. Commit with [Conventional Commits](https://www.conventionalcommits.org/):
    ```bash
@@ -171,10 +171,10 @@ Please use [GitHub Issues](https://github.com/caru-ini/discord-bot-template/issu
 ### Development Setup
 
 ```bash
-bun install
+npm install
 cp .env.example .env
 # Edit .env with your bot credentials
-bun run start
+npm run start
 ```
 
 ## License

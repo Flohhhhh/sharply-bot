@@ -29,10 +29,7 @@ const main = async () => {
       );
     }
     await rest.put(
-      Routes.applicationGuildCommands(
-        env.DISCORD_APPLICATION_ID,
-        env.DISCORD_GUILD_ID
-      ),
+      Routes.applicationGuildCommands(env.DISCORD_APPLICATION_ID, env.DISCORD_GUILD_ID),
       { body: data }
     );
     log.info(

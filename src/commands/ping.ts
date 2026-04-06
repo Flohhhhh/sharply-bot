@@ -1,8 +1,4 @@
-import {
-  type ChatInputCommandInteraction,
-  MessageFlags,
-  SlashCommandBuilder
-} from 'discord.js';
+import { type ChatInputCommandInteraction, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import type { Command } from '@/types';
 
 export const command: Command<ChatInputCommandInteraction> = {

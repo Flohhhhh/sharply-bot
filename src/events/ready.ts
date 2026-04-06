@@ -1,4 +1,5 @@
 import { Events, OAuth2Scopes, PermissionFlagsBits } from 'discord.js';
+import { startWeeklyGithubDigest } from '@/scheduled/weekly-github-digest';
 import type { Event } from '@/types';
 import { logger } from '@/utils/logger';
 
@@ -13,7 +14,10 @@ export const event: Event<Events.ClientReady> = {
       scopes: [OAuth2Scopes.Bot, OAuth2Scopes.ApplicationsCommands],
       permissions: [PermissionFlagsBits.Administrator]
     });
-    process.env.NODE_ENV !== 'production' &&
+    if (process.env.NODE_ENV !== 'production') {
       log.info({ inviteLink }, 'Invite Link (Dev Only):');
+    }
+
+    startWeeklyGithubDigest();
   }
 };

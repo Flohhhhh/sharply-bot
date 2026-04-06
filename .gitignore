@@ -26,5 +26,3 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Bun
-bun.lockb

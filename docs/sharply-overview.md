@@ -3,6 +3,7 @@
 ## What is Sharply?
 
 Sharply is a structured gear intelligence system focused on:
+
 - Accurate, normalized photography gear data
 - High-signal metadata and relationships
 - Editorial + system-driven enrichment (not user-generated noise)
@@ -14,6 +15,7 @@ Within this bot ecosystem, Sharply acts as the **source of truth for gear data a
 ## Role in This Bot
 
 Sharply powers:
+
 - Gear lookups and validation
 - Metadata enrichment (specs, mounts, aliases, regions)
 - Smart responses to gear-related commands
@@ -28,21 +30,25 @@ The bot is **not the data owner** — it is a **consumer + interface layer** for
 Sharply is responsible for:
 
 ### 1. Data Modeling
+
 - Gear entities (cameras, lenses, accessories)
 - Relationships (brand, mount, compatibility)
 - Regional naming / aliases
 
 ### 2. Data Integrity
+
 - Structured schema enforcement
 - Change request workflows
 - Evidence-backed updates (no blind edits)
 
 ### 3. Enrichment
+
 - Specs and technical metadata
 - Compatibility logic (e.g. mounts)
 - Popularity and usage signals (future)
 
 ### 4. Content Layer (Curated)
+
 - Videos from approved creators
 - Articles and supporting content
 - No open user-generated uploads
@@ -64,6 +70,7 @@ The bot is responsible for:
 ## Data Flow
 
 ### Simple Lookup
+
 1. User runs command
 2. Bot queries Sharply API
 3. Structured response returned
@@ -72,6 +79,7 @@ The bot is responsible for:
 ---
 
 ### Enriched / Async Flow
+
 1. User triggers command
 2. Interaction handled (Next.js or bot runtime)
 3. Job queued (if needed)
@@ -93,15 +101,19 @@ Sharply connects via:
 ## Design Principles
 
 ### Structured > Flexible
+
 All data is strongly typed and normalized.
 
 ### Curated > Crowdsourced
+
 Only vetted sources contribute to enrichment.
 
 ### Read-Optimized
+
 Designed for fast retrieval and presentation.
 
 ### Evidence-Based Updates
+
 All changes should be traceable and justifiable.
 
 ---
@@ -109,6 +121,7 @@ All changes should be traceable and justifiable.
 ## Non-Goals
 
 Sharply does NOT:
+
 - Host marketplaces or transactions
 - Allow open user submissions
 - Act as a social platform
@@ -135,6 +148,7 @@ Sharply does NOT:
 ## Summary
 
 Sharply provides:
+
 - Clean, structured gear data
 - High-quality enrichment
 - A reliable foundation for all gear-related features

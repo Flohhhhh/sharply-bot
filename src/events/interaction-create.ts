@@ -18,10 +18,7 @@ export const event: Event<Events.InteractionCreate> = {
     try {
       await command.execute(interaction);
     } catch (error) {
-      log.error(
-        { err: error },
-        `Error executing command: ${interaction.commandName}`
-      );
+      log.error({ err: error }, `Error executing command: ${interaction.commandName}`);
 
       const errorMessage = 'An error occurred while executing this command.';
 

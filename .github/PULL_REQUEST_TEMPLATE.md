@@ -12,6 +12,6 @@
 
 ## Checklist
 
-- [ ] Ran `bun run check`
-- [ ] Ran `bun run typecheck`
+- [ ] Ran `npm run check`
+- [ ] Ran `npm run typecheck`
 - [ ] Updated documentation if needed
