@@ -5,7 +5,7 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleDetection": "force",
-    "incremental": true,
+    "incremental": false,
     "allowJs": true,
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,

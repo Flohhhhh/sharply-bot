@@ -1,8 +1,29 @@
-import type { ClientEvents, Collection, Interaction, SlashCommandBuilder } from 'discord.js';
+import type {
+  ChatInputCommandInteraction,
+  ClientEvents,
+  Collection,
+  ContextMenuCommandBuilder,
+  MessageContextMenuCommandInteraction,
+  SlashCommandBuilder
+} from 'discord.js';
+
+export type SupportedCommandInteraction =
+  | ChatInputCommandInteraction
+  | MessageContextMenuCommandInteraction;
+
+export type CommandData =
+  | Pick<SlashCommandBuilder, 'name' | 'toJSON'>
+  | Pick<ContextMenuCommandBuilder, 'name' | 'toJSON'>;
+
+export interface CommandDocsMetadata {
+  category?: string;
+  examples?: string[];
+  notes?: string;
+}
 
 declare module 'discord.js' {
   export interface Client {
-    commands: Collection<string, Command<Interaction>>;
+    commands: Collection<string, Command>;
   }
 }
 
@@ -11,9 +32,10 @@ declare module 'discord.js' {
  * @param data Slash command data
  * @param execute Slash command handler function
  */
-export interface Command<T extends Interaction> {
-  data: Pick<SlashCommandBuilder, 'name' | 'toJSON'>;
+export interface Command<T extends SupportedCommandInteraction = SupportedCommandInteraction> {
+  data: CommandData;
   execute: (interaction: T) => Promise<void>;
+  docs?: CommandDocsMetadata;
 }
 
 /**

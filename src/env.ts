@@ -1,5 +1,9 @@
+import { config } from 'dotenv';
 import { createEnv } from '@t3-oss/env-core';
 import { z } from 'zod';
+
+// Node does not read `.env` by itself; load before validating `process.env`.
+config();
 
 const emptyToUndefined = (val: unknown) =>
   typeof val === 'string' && val.trim() === '' ? undefined : val;
@@ -9,6 +13,8 @@ export const env = createEnv({
   server: {
     DISCORD_BOT_TOKEN: z.string().min(1, 'DISCORD_BOT_TOKEN is required'),
     DISCORD_APPLICATION_ID: z.string().min(1, 'DISCORD_APPLICATION_ID is required'),
+    SHARPLY_API_BASE_URL: z.string().url('SHARPLY_API_BASE_URL must be a valid URL'),
+    SHARPLY_INTERNAL_API_TOKEN: z.string().min(1, 'SHARPLY_INTERNAL_API_TOKEN is required'),
     DISCORD_GUILD_ID: z.string().optional(),
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).optional().default('info'),
     WEEKLY_DIGEST_DISCORD_WEBHOOK_URL: z.preprocess(emptyToUndefined, z.string().url().optional()),

@@ -12,7 +12,14 @@ const main = async () => {
 
   log.info({ count: data.length }, 'Loaded commands');
   for (const cmd of data) {
-    log.info({ displayName: cmd.name, description: cmd.description }, cmd.name);
+    log.info(
+      {
+        displayName: cmd.name,
+        description: 'description' in cmd ? cmd.description : undefined,
+        type: 'type' in cmd ? cmd.type : undefined
+      },
+      cmd.name
+    );
   }
 
   const rest = new REST({ version: '10' }).setToken(env.DISCORD_BOT_TOKEN);

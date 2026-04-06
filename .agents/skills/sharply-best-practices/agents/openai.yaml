@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sharply Best Practices"
+  short_description: "Sharply bot integration rules"
+  default_prompt: "Use $sharply-best-practices to implement this Sharply Bot change using the repo's command ownership and frontend/bot contract rules."

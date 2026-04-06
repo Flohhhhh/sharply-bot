@@ -1,90 +1,81 @@
-# Discord Bot Hybrid Architecture Plan
+# Discord Bot Architecture
 
 ## Core Idea
 
 Split responsibilities between:
 
-- **Next.js (stateless, request-driven)**
-- **Railway bot (persistent runtime)**
+- **Sharply (source of truth / internal API)**
+- **Persistent bot runtime (Discord-facing runtime)**
+
+See also: `docs/frontend-bot-contract.md` for the full cross-repo contract, alignment rules, and maintenance checklist.
 
 ---
 
 ## Responsibilities
 
-### 1. Next.js (Interaction Layer)
+### 1. Persistent Bot (Interaction Layer)
 
 Handles:
 
 - Slash commands
-- Buttons / modals
-- Webhook validation (Discord signatures)
+- Message context commands
+- Discord gateway interaction routing
 - Fast responses (≤3s)
 
 Behavior:
 
-- Respond immediately OR
-- Enqueue job for async processing
+- Reply immediately for fast commands
+- Defer replies for slower network-backed commands
 
 ---
 
-### 2. Railway Bot (Runtime Layer)
+### 2. Sharply App (Data / Logic Layer)
 
 Handles:
 
-- Gateway events (messageCreate, reactions, joins, etc.)
-- Background jobs
-- Scheduled tasks
-- Long-running workflows
-- Follow-up messages to Discord
+- Gear search and compare resolution
+- Pricing and metrics reads
+- Trending data and message-to-gear resolution
+- Any app-owned mutations exposed to the bot later
 
 ---
 
 ## Data / Communication Layer
 
-Use shared system:
-
-- Redis (preferred for queue)
-- OR Postgres (jobs table)
+Use authenticated internal HTTP endpoints.
 
 Flow:
 
-1. Interaction hits Next.js
-2. Next.js validates + acks
-3. Push job → queue/db
-4. Railway bot consumes job
-5. Bot executes + sends result to Discord
+1. User triggers a command in Discord
+2. Bot receives the interaction over the gateway
+3. Bot calls authenticated Sharply internal endpoints
+4. Sharply returns structured data
+5. Bot formats and sends the Discord response
 
 ---
 
 ## Shared Logic (Critical)
 
-Create a shared package:
-
-- Command definitions
-- Business logic
-- Discord helpers
-
-Both systems import this:
-
-- Prevents duplication
-- Keeps behavior consistent
+Keep command ownership inside the bot repo.
+Keep app/business logic inside Sharply.
+Sync public command documentation into Sharply from the bot-owned command set.
 
 ---
 
 ## Rules (Avoid Problems)
 
-- Do NOT handle same interaction in both places
-- Do NOT duplicate command logic
-- Do NOT rely on in-memory state
-- Use DB/queue for all cross-system state
+- Do NOT handle the same interaction in both repos
+- Do NOT import Sharply server modules directly into the bot
+- Do NOT expose bot-facing app endpoints without internal auth
+- Keep Discord formatting in the bot; keep data truth in Sharply
 
 ---
 
 ## Mental Model
 
-- Next.js = **entry point**
-- Railway = **engine**
-- Queue/DB = **bridge**
+- Bot = **entry point + Discord interface**
+- Sharply = **engine + source of truth**
+- Internal API = **bridge**
 
 ---
 
@@ -92,22 +83,17 @@ Both systems import this:
 
 Phase 1:
 
-- Keep all interactions in Next.js
-- Add Railway for background tasks
+- Expose authenticated Sharply endpoints for bot use
+- Move all Discord command registration and handling into the bot
 
 Phase 2:
 
-- Move more logic into shared layer
-
-Phase 3 (optional):
-
-- Move interactions fully to Railway if needed
+- Add additional bot-only features on top of the same internal API contract
 
 ---
 
 ## Result
 
 - Fast, reliable interactions
-- Scalable async processing
 - Clean separation of concerns
-- No conflicts between systems
+- Clear ownership boundaries between bot UI and app logic

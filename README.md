@@ -1,4 +1,4 @@
-# Node.js + TypeScript Discord Bot Template
+# Sharply Bot
 
 ![intro](docs/images/intro.png)
 
@@ -8,7 +8,7 @@
 [![Prettier](https://img.shields.io/badge/Prettier-F7B93E?logo=prettier&logoColor=black)](https://prettier.io/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-A simple, type-safe Discord Bot template built with Node.js + ESLint + Prettier + TypeScript.
+A persistent Discord bot for Sharply built with Node.js, TypeScript, and `discord.js`.
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/discord-bot-template?referralCode=DIAbPh&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
@@ -17,7 +17,19 @@ A simple, type-safe Discord Bot template built with Node.js + ESLint + Prettier 
 - Runs on Node.js 20+ with [tsx](https://github.com/privatenumber/tsx) for TypeScript execution
 - Full type safety with Zod environment variable validation
 - Dynamic command/event loading
+- Slash commands and a message context command backed by Sharply internal API endpoints
 - Docker/Railway deployment ready
+
+## Repo Boundary
+
+This repository is intentionally the Discord-facing layer, not the full Sharply product.
+
+- `sharply-bot` owns Discord commands, command deployment, interaction handling, reply formatting, and runtime concerns.
+- `sharply` owns product logic, database access, canonical Sharply URLs, and the protected internal API consumed by this bot.
+
+The integration boundary is authenticated HTTP. The bot should call Sharply through `src/utils/sharply-api.ts`, not import or recreate frontend/app logic locally.
+
+For the full contract, see [docs/frontend-bot-contract.md](docs/frontend-bot-contract.md).
 
 ## Quick Start
 
@@ -39,6 +51,8 @@ Edit `.env`:
 DISCORD_BOT_TOKEN=your_bot_token_here
 DISCORD_APPLICATION_ID=your_application_id_here
 DISCORD_GUILD_ID=your_guild_id_here  # optional
+SHARPLY_API_BASE_URL=https://your-sharply-app.example.com
+SHARPLY_INTERNAL_API_TOKEN=shared_internal_token
 ```
 
 ### Deploy Commands
@@ -46,6 +60,8 @@ DISCORD_GUILD_ID=your_guild_id_here  # optional
 ```bash
 npm run deploy-commands              # Guild deploy (development)
 npm run deploy-commands -- --global  # Global deploy (production, take more time to propagate)
+npm run clear-commands               # Clear guild commands
+npm run clear-commands:global        # Clear global commands
 ```
 
 ### Run
@@ -63,9 +79,14 @@ src/
 ├── env.ts            # Environment validation
 ├── types.d.ts        # Type definitions
 ├── deploy.ts         # Command deployment script
-├── commands/         # Slash commands
+├── commands/         # Slash + context menu commands
 │   ├── ping.ts
-│   └── info.ts
+│   ├── gear.ts
+│   ├── compare.ts
+│   ├── leaderboard.ts
+│   ├── totals.ts
+│   ├── trending.ts
+│   └── message-search-gear.ts
 ├── events/           # Event handlers
 │   ├── ready.ts
 │   └── interaction-create.ts
@@ -134,19 +155,50 @@ docker run -d --env-file .env discord-bot
 
 ## Scripts
 
-| Command                   | Description                         |
-| ------------------------- | ----------------------------------- |
-| `npm run start`           | Start the bot                       |
-| `npm run deploy-commands` | Deploy slash commands               |
-| `npm run lint`            | Run ESLint                          |
-| `npm run lint:fix`        | Run ESLint with auto-fix            |
-| `npm run fmt`             | Format with Prettier                |
-| `npm run check`           | ESLint + Prettier check (no writes) |
-| `npm run typecheck`       | TypeScript type check               |
+| Command                         | Description                            |
+| ------------------------------- | -------------------------------------- |
+| `npm run start`                 | Start the bot                          |
+| `npm run deploy-commands`       | Deploy slash and context-menu commands |
+| `npm run clear-commands`        | Clear guild commands                   |
+| `npm run clear-commands:global` | Clear global commands                  |
+| `npm run lint`                  | Run ESLint                             |
+| `npm run lint:fix`              | Run ESLint with auto-fix               |
+| `npm run fmt`                   | Format with Prettier                   |
+| `npm run check`                 | ESLint + Prettier check (no writes)    |
+| `npm run typecheck`             | TypeScript type check                  |
 
 ## Contributing
 
 Contributions are very welcome!
+
+### Can I Contribute Without The Frontend Repo?
+
+Yes, for a lot of work.
+
+You can usually make meaningful changes in `sharply-bot` alone when the work is about Discord UX or bot runtime behavior:
+
+- command descriptions, options, and examples
+- reply copy and message formatting
+- ephemeral vs public behavior
+- loading, logging, error handling, deployment, and scheduling
+- bug fixes in command routing or Discord-specific interaction flow
+
+You will usually need the `sharply` repo as well when the change affects app-owned behavior:
+
+- new product logic or business rules
+- gear search, compare, pricing, leaderboard, or trending behavior
+- database reads or writes
+- new or changed internal API endpoints
+- command metadata that also powers the Sharply site docs
+
+The default split is:
+
+1. Add or update the internal endpoint in `sharply` when app logic changes.
+2. Update `src/utils/sharply-api.ts` in this repo.
+3. Implement the Discord UX in `src/commands/**`.
+4. Update mirrored docs/manifest data in `sharply` if command docs changed.
+
+If ownership is unclear, use this rule: Discord behavior belongs here; Sharply data and product logic belong in `sharply`.
 
 ### Bug Reports & Feature Requests
 
@@ -173,9 +225,13 @@ Please use [GitHub Issues](https://github.com/caru-ini/discord-bot-template/issu
 ```bash
 npm install
 cp .env.example .env
-# Edit .env with your bot credentials
+# Edit .env with your bot credentials and a reachable Sharply API
 npm run start
 ```
+
+For bot-only work, you do not need a local checkout of `sharply` as long as you have access to a compatible Sharply environment and internal token.
+
+If your change updates the bot/frontend contract, read [docs/frontend-bot-contract.md](docs/frontend-bot-contract.md) before opening the PR.
 
 ## License
 

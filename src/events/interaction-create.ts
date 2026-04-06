@@ -7,7 +7,9 @@ const log = logger.child({ name: 'events/interaction-create' });
 export const event: Event<Events.InteractionCreate> = {
   name: Events.InteractionCreate,
   execute: async (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
+    if (!interaction.isChatInputCommand() && !interaction.isMessageContextMenuCommand()) {
+      return;
+    }
 
     const command = interaction.client.commands.get(interaction.commandName);
     if (!command) {
