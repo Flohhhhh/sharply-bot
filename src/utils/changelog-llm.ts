@@ -72,6 +72,23 @@ function stripOuterMarkdownFence(text: string): string {
 }
 
 /**
+ * Discord: wrap http(s) destinations in `](<url>)` to reduce embeds. Idempotent if
+ * already `](<https://...>)`.
+ */
+export function ensureMarkdownHttpLinksAngleWrapped(text: string): string {
+	return text.replace(/\]\(([^)]+)\)/g, (full, hrefRaw: string) => {
+		const href = hrefRaw.trim();
+		if (/^<https?:\/\//i.test(href) && href.endsWith('>')) {
+			return `](${href})`;
+		}
+		if (/^https?:\/\//i.test(href)) {
+			return `](<${href}>)`;
+		}
+		return full;
+	});
+}
+
+/**
  * Turn merged PR metadata into user-facing Discord markdown (What's New / Fixes).
  * OpenAI-compatible `POST /chat/completions` (works with OpenAI, Groq, etc.).
  */
@@ -99,26 +116,50 @@ export async function generateChangelogWithLlm(
 	};
 
 	const system = [
-		'You write short, user-facing product release notes for Discord (end users, not developers).',
-		'You receive merged GitHub pull requests as JSON. Each item has a stable numeric id, the original PR title, and the canonical PR URL.',
-		'Rewrite titles into clear, friendly bullets. You may lightly fix obvious PR-title typos if meaning is clear.',
-		'Do not mention merges, pull requests, branches, GitHub workflow, or engineering process.',
-		'Use a casual changelog voice; start each bullet with a lowercase letter unless a proper noun requires otherwise.',
-		'End each bullet with a period before the link marker.',
-	].join(' ');
+		'You are a product writer turning engineering PR titles into polished, user-facing release notes.',
+		'Audience: photographers and shoppers using the product—never developers.',
+		'Input: JSON array of merged work items; each has id, githubNumber, title, url, suggestedSection.',
+		'Your job is to infer themes (search, browse, gear cards, lists, compare, profiles, catalog/data, mobile, etc.) and write a SHORT digest that feels like a human PM wrote it.',
+		'Never mention merges, PRs, branches, commits, GitHub, or how the sausage is made.',
+	].join('\n');
+
+	const styleExemplar = [
+		'Target voice and density (your bullets should feel like this—not a dry rewrite of each PR title):',
+		'- global search got a big refresh with smarter suggestions, better keyboard flow, recent searches, and quicker jump-offs to results.',
+		'- search accuracy is better for tricky gear queries like aperture values, and it avoids more irrelevant one-number matches.',
+		'- browse pages now have cleaner sorting/filter reset behavior, plus better mobile search/header behavior.',
+		'- gear card actions are more reliable, including save, wishlist, and collection state.',
+		'- saving an item to a list now includes a quick "View list" shortcut.',
+		'- public profile and list pages have clearer empty states and error handling.',
+		'- compare pages are easier to navigate, with item names linking directly to their gear pages.',
+		'- gear pages can now show trusted creator video coverage when available.',
+		'- the catalog was cleaned up with added sensor formats, updated slugs/mount data, and some visual polish to gear cards.',
+	].join('\n');
 
 	const user = [
+		styleExemplar,
+		'',
+		'How to write from the JSON:',
+		'- CLUSTER related items into the same bullet when they clearly touch the same user-facing area (e.g. several search PRs → one rich search bullet with multiple clauses joined by commas, "and", "plus", "including").',
+		'- Prefer FEWER, LONGER bullets over one thin bullet per PR. If there are many PRs, aim for roughly half to two-thirds as many bullets as PRs when themes overlap.',
+		'- Start most bullets with a lowercase letter unless a proper noun forces otherwise.',
+		'- Use varied rhythms: "X got…", "X is better…", "X now…", "X was cleaned up with…", "Y can now…".',
+		'- Fixes: under ## Fixes, same style—group related bugfix titles into one sentence when they are the same area; still user-benefit language ("spacing feels right", "no more …") not "fixed bug in component".',
+		'',
+		'Links (required): include every id from the input exactly once across the whole digest (each id appears in exactly one bullet, in that bullet\'s trailing link group).',
+		'- Put ALL link tokens for that bullet at the END of the line, after the final period, separated by single spaces.',
+		'- Format for each id K: [[K]](<URL>) — the URL inside parentheses MUST be wrapped in angle brackets (Discord): always `](<https://...>)`, never bare `](https://...)`.',
+		'- Example shape: `- browse and mobile search feel smoother, with cleaner resets and header behavior. [[2]](<https://...>) [[5]](<https://...>)`',
+		'- Do not add a separate footnote block at the bottom.',
+		'',
+		'Output:',
+		'- Return ONLY markdown inside a single code fence block ``` {your content} ```',
+		"- Use ## What's New and ## Fixes only when non-empty.",
+		"- Use suggestedSection as a hint; move items if the title is clearly miscategorized.",
+		'- Only use ids and urls that exist in the JSON.',
+		'',
 		'Input JSON:',
 		JSON.stringify(payload, null, 2),
-		'',
-		'Output requirements:',
-		'- Return ONLY markdown (no surrounding ``` fences, no preamble or commentary).',
-		"- Use sections ## What's New and ## Fixes only when they have at least one bullet.",
-		"- Put fixes under ## Fixes and everything else under ## What's New (you may override suggestedSection if a title is clearly miscategorized).",
-		'- One bullet per input pull unless two ids are truly the same user-facing change (avoid this unless obvious); prefer one bullet per id.',
-		'- Every bullet for pull id K MUST end with this exact link pattern: ` [[K]](<URL>)` where URL is the exact `url` string from that id in the JSON (wrap the URL in angle brackets as shown).',
-		'- Do not invent ids or URLs; only use ids and urls present in the input.',
-		'- Do not add a footnote list; links are inline on each bullet only.',
 	].join('\n');
 
 	const messages = [
@@ -128,7 +169,7 @@ export async function generateChangelogWithLlm(
 
 	const baseBody = {
 		model,
-		temperature: 0.35,
+		temperature: 0.55,
 		messages,
 	};
 
@@ -225,9 +266,11 @@ export async function generateChangelogWithLlm(
 		return null;
 	}
 
+	const normalized = ensureMarkdownHttpLinksAngleWrapped(markdown);
+
 	log.info(
-		{ durationMs, chars: markdown.length, pulls: pulls.length },
+		{ durationMs, chars: normalized.length, pulls: pulls.length },
 		'LLM changelog: generated',
 	);
-	return markdown;
+	return normalized;
 }
