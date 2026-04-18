@@ -262,7 +262,7 @@ function registerCronWithCroner(expression: string): void {
 }
 
 export type WeeklyDigestRunContext = {
-	reason: "startup" | "cron";
+	reason: "startup" | "cron" | "manual";
 };
 
 export async function runWeeklyGithubDigest(
